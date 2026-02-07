@@ -7,10 +7,10 @@ load_dotenv()
 
 Base = declarative_base()
 
-DATABSE_URL = os.getenv("DATABASE_URL")
-print("DATABSE_URL",DATABSE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABSE_URL",DATABASE_URL)
 
-engine = create_engine(DATABSE_URL)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
