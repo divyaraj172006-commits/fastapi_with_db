@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from db import get_db
 from models import User
@@ -9,14 +10,45 @@ from utils.jwt_handler import create_tokens, verify_token
 
 router = APIRouter()
 
+# 1. Define the OAuth2 scheme (Tells FastAPI where to find the token)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# 2. Create the Dependency to get the current user
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # Use your existing verify_token utility
+    # We assume verify_token returns the payload (dict) or None
+    payload = verify_token(token, token_type="access") 
+    
+    if not payload:
+        raise credentials_exception
+        
+    email: str = payload.get("email")
+    if email is None:
+        raise credentials_exception
+        
+    user_repo = UserRepo(db)
+    user = user_repo.get_user_by_email(email)
+    
+    if user is None:
+        raise credentials_exception
+        
+    return user
+
 
 @router.post("/signup")
 def signup(user: UserSchema, db: Session = Depends(get_db)):
     user_repo = UserRepo(db)
-    # Convert Pydantic schema to SQLAlchemy model
     existing_user = user_repo.get_user_by_email(user.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
+    
+    # Note: Ensure you hash the password here in production!
     db_user = User(email=user.email, password=user.password)
     user_repo.add_user(db_user)
     return {"message": "User signed up successfully"}
@@ -57,3 +89,16 @@ def refresh_token(token_data: TokenRefresh, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="User not found")
     
     return create_tokens(user.id, user.email)
+
+
+# 3. Add the missing Endpoint
+@router.get("/users/me")
+def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Returns the current user's profile.
+    Requires a valid Access Token in the Authorization header.
+    """
+    return {
+        "id": current_user.id,
+        "email": current_user.email
+    }
